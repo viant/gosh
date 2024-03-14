@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 )
 
+// Runner represents local runner
 type Runner struct {
 	inited   uint32
 	cmd      *exec.Cmd
@@ -16,6 +17,7 @@ type Runner struct {
 	stdin    io.WriteCloser
 }
 
+// Run runs supplied command
 func (r *Runner) Run(command string, options ...runner.Option) (string, int, error) {
 	if err := r.initIfNeeded(); err != nil {
 		return "", 0, err
@@ -35,6 +37,7 @@ func (r *Runner) Run(command string, options ...runner.Option) (string, int, err
 	return output, code, err
 }
 
+// PID returns process id
 func (r *Runner) PID() int {
 	if r.cmd == nil || r.cmd.Process == nil {
 		return 0
@@ -63,9 +66,6 @@ func (r *Runner) initIfNeeded() error {
 
 func (r *Runner) init() error {
 	r.cmd = exec.Command(r.options.Shell)
-	if r.options.Path != "" {
-		r.cmd.Path = r.options.Path
-	}
 	r.cmd.Env = r.options.Environ()
 	var err error
 	r.stdin, err = r.cmd.StdinPipe()
@@ -85,9 +85,13 @@ func (r *Runner) init() error {
 		return err
 	}
 	r.pipeline, err = runner.NewPipeline(r.stdin, stdout, stderr, r.options)
+	if r.options.Path != "" {
+		_, _, err = r.Run("cd " + r.options.Path)
+	}
 	return err
 }
 
+// Close closes runner
 func (r *Runner) Close() error {
 	if r.cmd.Process != nil {
 		r.cmd.Process.Kill()
@@ -101,6 +105,7 @@ func (r *Runner) Close() error {
 	return nil
 }
 
+// New creates a new local runner
 func New(options ...runner.Option) *Runner {
 	opts := runner.NewOptions(options)
 	return &Runner{options: opts}

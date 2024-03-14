@@ -1,6 +1,7 @@
 package gosh
 
 type (
+	// OSInfo represents operating system details
 	OSInfo struct {
 		System        string // Operating system type
 		Name          string // Name of the OS
@@ -9,7 +10,7 @@ type (
 		Release       string // OS release number (from lsb_release -a)
 		Codename      string // OS release codename (from lsb_release -a)
 	}
-
+	// HardwareInfo represents hardware details
 	HardwareInfo struct {
 		Hardware     string // Hardware details
 		Architecture string // Full architecture name

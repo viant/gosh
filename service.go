@@ -5,24 +5,29 @@ import (
 	"strings"
 )
 
+// Service represents a shell service
 type Service struct {
 	runner runner.Runner
 	osInfo *OSInfo
 	hwInfo *HardwareInfo
 }
 
+// Run runs supplied command
 func (s *Service) Run(command string, options ...runner.Option) (string, int, error) {
 	return s.runner.Run(command, options...)
 }
 
+// PID returns process id
 func (s *Service) PID() int {
 	return s.runner.PID()
 }
 
+// OsInfo represents OS information
 func (s *Service) OsInfo() *OSInfo {
 	return s.osInfo
 }
 
+// HardwareInfo represents hardware information
 func (s *Service) HardwareInfo() *HardwareInfo {
 	return s.hwInfo
 }
@@ -34,12 +39,13 @@ func (s *Service) init() error {
 func (s *Service) detectSystem() (err error) {
 	s.osInfo = &OSInfo{}
 	s.hwInfo = &HardwareInfo{Architecture: "unknown"}
-	if s.osInfo.System, _, err = s.runner.Run("uname -s"); err != nil {
-		return err
+	var e error
+	if s.osInfo.System, _, e = s.runner.Run("uname -s"); err != nil {
+		err = e
 	}
 	s.osInfo.System = strings.ToLower(s.osInfo.System)
-	if s.hwInfo.Hardware, _, err = s.runner.Run("uname -m"); err != nil {
-		return err
+	if s.hwInfo.Hardware, _, e = s.runner.Run("uname -m"); err != nil {
+		err = e
 	}
 	s.hwInfo.Hardware = strings.ToLower(s.hwInfo.Hardware)
 	checkCmd := "lsb_release -a"
@@ -58,9 +64,9 @@ func (s *Service) detectSystem() (err error) {
 		s.hwInfo.Architecture = "arm64"
 		s.hwInfo.Arch = "x64"
 	}
-	output, _, err := s.runner.Run(checkCmd)
-	if err != nil {
-		return err
+	output, _, e := s.runner.Run(checkCmd)
+	if e != nil {
+		err = e
 	}
 	lines := strings.Split(output, "\n")
 	for i := 0; i < len(lines); i++ {
@@ -83,7 +89,17 @@ func (s *Service) detectSystem() (err error) {
 		}
 
 	}
-	return nil
+	if isNotFound(err) {
+		return nil
+	}
+	return err
+}
+
+func isNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "not found")
 }
 
 func isAmd64Architecture(candidate string) bool {
@@ -97,6 +113,7 @@ func isAppleArm64Architecture(hardware string) bool {
 	return strings.Contains(hardware, "arm64")
 }
 
+// New creates a new shell service
 func New(runner runner.Runner) (*Service, error) {
 	ret := &Service{runner: runner}
 	return ret, ret.init()

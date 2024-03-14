@@ -11,6 +11,7 @@ const (
 )
 
 type (
+	//Options represents runner options
 	Options struct {
 		Runner             Runner
 		Shell              string
@@ -29,9 +30,11 @@ type (
 		terminators        []string
 	}
 
+	//Option represents runner option
 	Option func(*Options)
 )
 
+// Environ returns environment variables
 func (p *Options) Environ() []string {
 	var result []string
 	if len(p.Env) == 0 {
@@ -43,6 +46,8 @@ func (p *Options) Environ() []string {
 	return result
 
 }
+
+// Apply applies options
 func (p *Options) Apply(options []Option) *Options {
 	ret := *p
 	for _, o := range options {
@@ -51,6 +56,7 @@ func (p *Options) Apply(options []Option) *Options {
 	return &ret
 }
 
+// NewOptions creates a new options
 func NewOptions(opts []Option) *Options {
 	opt := &Options{}
 	for _, o := range opts {
@@ -120,12 +126,14 @@ func WithHistory(history *History) Option {
 	}
 }
 
+// WithEnvironment creates with environment option
 func WithEnvironment(env map[string]string) Option {
 	return func(o *Options) {
 		o.Env = env
 	}
 }
 
+// WithPath creates with path option
 func WithPath(aPath string) Option {
 	return func(o *Options) {
 		o.Path = aPath

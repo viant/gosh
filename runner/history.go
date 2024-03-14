@@ -1,5 +1,6 @@
 package runner
 
+// History represents command history
 type History struct {
 	Commands []*Command
 }

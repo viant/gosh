@@ -11,6 +11,7 @@ import (
 	"time"
 )
 
+// Runner represents ssh runner
 type Runner struct {
 	inited   uint32
 	client   *ssh.Client
@@ -71,8 +72,13 @@ func (r *Runner) start() (err error) {
 		pid = strings.TrimSpace(pid)
 		r.pid, err = strconv.Atoi(pid)
 	}
+	if r.options.Path != "" {
+		_, _, err = r.Run("cd " + r.options.Path)
+	}
 	return err
 }
+
+// PID returns process id
 func (r *Runner) PID() int {
 	return r.pid
 }
@@ -91,6 +97,7 @@ func (r *Runner) init() (err error) {
 	return err
 }
 
+// Run runs supplied command
 func (r *Runner) Run(command string, options ...runner.Option) (string, int, error) {
 	if err := r.initIfNeeded(); err != nil {
 		return "", 0, err
@@ -129,6 +136,7 @@ func (r *Runner) initIfNeeded() error {
 	return nil
 }
 
+// New creates a new runner
 func New(host string, config *ssh.ClientConfig, opts ...runner.Option) *Runner {
 	opts = append([]runner.Option{runner.WithShellPrompt("shh-" + strconv.Itoa(int(time.Now().UnixMilli())) + "$")}, opts...)
 	return &Runner{

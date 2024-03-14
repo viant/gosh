@@ -18,6 +18,7 @@ const (
 )
 
 type (
+	//Pipeline represents a command pipeline
 	Pipeline struct {
 		err        error
 		bufferSize int
@@ -31,31 +32,36 @@ type (
 	}
 )
 
-func (s *Pipeline) FormatCmd(cmd string) string {
+// FormatCmd formats command
+func (p *Pipeline) FormatCmd(cmd string) string {
 	if !strings.HasSuffix(cmd, "\n") {
 		cmd += "\n"
 	}
 	return cmd + "echo 'status:'$?\n"
 }
 
-func (s *Pipeline) Drain() {
+// Drain reads any outstanding output
+func (p *Pipeline) Drain() {
 	//read any outstanding output
 	for {
-		_, has, _, _ := s.Read(WithTimeout(drainTimeoutMs))
+		_, has, _, _ := p.Read(WithTimeout(drainTimeoutMs))
 		if !has {
 			return
 		}
 	}
 }
 
+// Err returns error
 func (p *Pipeline) Err() error {
 	return p.err
 }
 
+// Running returns true if pipeline is running
 func (p *Pipeline) Running() bool {
 	return atomic.LoadInt32(&p.running) == 1
 }
 
+// Close closes pipeline
 func (p *Pipeline) Close() (err error) {
 	if !atomic.CompareAndSwapInt32(&p.running, 1, 0) {
 		return nil
@@ -113,6 +119,7 @@ func (p *Pipeline) closeIfError(writeError error) error {
 
 var defaultCode = 0
 
+// Read reads output
 func (p *Pipeline) Read(opts ...Option) (output string, has bool, code int, err error) {
 	options := p.options.Apply(opts)
 	timeoutMs := options.timeoutMs
@@ -308,6 +315,7 @@ func addLineBreakIfNeeded(text string) string {
 	return text
 }
 
+// NewPipeline creates a new pipeline
 func NewPipeline(in io.WriteCloser, stdout io.Reader, stderr io.Reader, options *Options) (*Pipeline, error) {
 	ret := &Pipeline{
 		running: 1,

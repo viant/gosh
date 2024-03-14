@@ -5,6 +5,7 @@ import (
 	"github.com/viant/gosh/runner"
 )
 
+// Runner represents a command runner
 type Runner struct {
 	from []*runner.Command
 	pid  int
@@ -24,21 +25,24 @@ func (r *Runner) matchRemove(input string) *runner.Command {
 	return matched
 }
 
+// PID returns process id
 func (r *Runner) PID() int {
 	return r.pid
 }
 
+// Run runs supplied command
 func (r *Runner) Run(command string, options ...runner.Option) (string, error) {
 	if len(r.from) == 0 {
 		return "", nil
 	}
 	cmd := r.matchRemove(command)
 	if cmd == nil {
-		return "", fmt.Errorf("no found\n")
+		return "", fmt.Errorf("no found")
 	}
 	return cmd.Output(), cmd.Err()
 }
 
+// New creates a new runner
 func New(pid int, from []*runner.Command) *Runner {
 	return &Runner{from: from, pid: pid}
 }
