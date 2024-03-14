@@ -1,0 +1,107 @@
+package local
+
+import (
+	"fmt"
+	"github.com/viant/gosh/runner"
+	"io"
+	"os/exec"
+	"sync/atomic"
+)
+
+type Runner struct {
+	inited   uint32
+	cmd      *exec.Cmd
+	options  *runner.Options
+	pipeline *runner.Pipeline
+	stdin    io.WriteCloser
+}
+
+func (r *Runner) Run(command string, options ...runner.Option) (string, int, error) {
+	if err := r.initIfNeeded(); err != nil {
+		return "", 0, err
+	}
+	if !r.pipeline.Running() {
+		return "", 0, r.pipeline.Err()
+	}
+	r.pipeline.Drain()
+	err := r.runCommand(command)
+	if err != nil {
+		return "", 0, err
+	}
+	output, _, code, err := r.pipeline.Read(options...)
+	if r.options.History != nil {
+		r.options.History.Commands = append(r.options.History.Commands, runner.NewCommand(command, output, err))
+	}
+	return output, code, err
+}
+
+func (r *Runner) PID() int {
+	if r.cmd == nil || r.cmd.Process == nil {
+		return 0
+	}
+	return r.cmd.Process.Pid
+}
+
+func (r *Runner) runCommand(command string) error {
+	var cmd = r.pipeline.FormatCmd(command)
+	_, err := r.stdin.Write([]byte(cmd))
+	if err != nil {
+		return fmt.Errorf("failed to execute command: %v, err: %v", command, err)
+	}
+	return nil
+}
+
+func (r *Runner) initIfNeeded() error {
+	if !atomic.CompareAndSwapUint32(&r.inited, 0, 1) {
+		return nil
+	}
+	if err := r.init(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Runner) init() error {
+	r.cmd = exec.Command(r.options.Shell)
+	if r.options.Path != "" {
+		r.cmd.Path = r.options.Path
+	}
+	r.cmd.Env = r.options.Environ()
+	var err error
+	r.stdin, err = r.cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+
+	stdout, err := r.cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := r.cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := r.cmd.Start(); err != nil {
+		return err
+	}
+	r.pipeline, err = runner.NewPipeline(r.stdin, stdout, stderr, r.options)
+	return err
+}
+
+func (r *Runner) Close() error {
+	if r.cmd.Process != nil {
+		r.cmd.Process.Kill()
+	}
+	if r.pipeline != nil {
+		r.pipeline.Close()
+	}
+	if r.stdin != nil {
+		r.stdin.Close()
+	}
+	return nil
+}
+
+func New(options ...runner.Option) *Runner {
+	opts := runner.NewOptions(options)
+	return &Runner{options: opts}
+}
