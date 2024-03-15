@@ -141,7 +141,7 @@ func WithPath(aPath string) Option {
 	}
 }
 
-// WithListener creates with listener option
+// WithSystemPaths creates with listener option
 func WithSystemPaths(paths []string) Option {
 	return func(o *Options) {
 		o.SystemPaths = paths

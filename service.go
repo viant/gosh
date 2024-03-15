@@ -12,6 +12,10 @@ type Service struct {
 	hwInfo *HardwareInfo
 }
 
+func (s *Service) Close() error {
+	return s.runner.Close()
+}
+
 // Run runs supplied command
 func (s *Service) Run(command string, options ...runner.Option) (string, int, error) {
 	return s.runner.Run(command, options...)
