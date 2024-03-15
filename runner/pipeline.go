@@ -184,6 +184,7 @@ outer:
 				break outer
 			}
 		case <-ctx.Done():
+			return "", false, 0, fmt.Errorf("context was cancelled or timed out")
 			// Context was cancelled or timed out
 		case <-time.After(timeoutDuration):
 			waitTimeMs += tickFrequencyMs
