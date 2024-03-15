@@ -15,16 +15,16 @@ import (
 )
 
 func TestService_Run(t *testing.T) {
-	srv, err := gosh.New(local.New())
+	srv, err := gosh.New(context.Background(), local.New())
 	assert.Nil(t, err)
 	assert.NotNil(t, srv.OsInfo())
 	assert.NotNil(t, srv.HardwareInfo())
 
-	_, _, err = srv.Run("cd /etc")
+	_, _, err = srv.Run(context.Background(), "cd /etc")
 	if err != nil {
 		panic(err)
 	}
-	output, _, err := srv.Run("ls -al")
+	output, _, err := srv.Run(context.Background(), "ls -al")
 	if err != nil {
 		panic(err)
 	}
@@ -32,12 +32,12 @@ func TestService_Run(t *testing.T) {
 }
 
 func ExampleLocalRun() {
-	srv, err := gosh.New(local.New())
+	srv, err := gosh.New(context.Background(), local.New())
 	if err != nil {
 		return
 	}
-	_, _, err = srv.Run("cd /etc")
-	output, _, err := srv.Run("ls -l")
+	_, _, err = srv.Run(context.Background(), "cd /etc")
+	output, _, err := srv.Run(context.Background(), "ls -l")
 	println(output)
 }
 
@@ -57,12 +57,12 @@ func ExampleRemoveRun() {
 	if err != nil {
 		panic(err)
 	}
-	srv, err := gosh.New(ssh.New(host+":22", clientConfig))
+	srv, err := gosh.New(context.Background(), ssh.New(host+":22", clientConfig))
 	if err != nil {
 		return
 	}
-	_, _, err = srv.Run("cd /etc")
-	output, _, err := srv.Run("ls -l")
+	_, _, err = srv.Run(context.Background(), "cd /etc")
+	output, _, err := srv.Run(context.Background(), "ls -l")
 	println(output)
 }
 

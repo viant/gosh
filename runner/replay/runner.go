@@ -1,6 +1,7 @@
 package replay
 
 import (
+	"context"
 	"fmt"
 	"github.com/viant/gosh/runner"
 )
@@ -35,7 +36,7 @@ func (r *Runner) PID() int {
 }
 
 // Run runs supplied command
-func (r *Runner) Run(command string, options ...runner.Option) (string, error) {
+func (r *Runner) Run(ctx context.Context, command string, options ...runner.Option) (string, error) {
 	if len(r.from) == 0 {
 		return "", nil
 	}

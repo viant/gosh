@@ -1,6 +1,7 @@
 package local
 
 import (
+	"context"
 	"fmt"
 	"github.com/viant/gosh/runner"
 	"io"
@@ -19,19 +20,19 @@ type Runner struct {
 }
 
 // Run runs supplied command
-func (r *Runner) Run(command string, options ...runner.Option) (string, int, error) {
-	if err := r.initIfNeeded(); err != nil {
+func (r *Runner) Run(ctx context.Context, command string, options ...runner.Option) (string, int, error) {
+	if err := r.initIfNeeded(ctx); err != nil {
 		return "", 0, err
 	}
 	if !r.pipeline.Running() {
 		return "", 0, r.pipeline.Err()
 	}
-	r.pipeline.Drain()
+	r.pipeline.Drain(ctx)
 	err := r.runCommand(command)
 	if err != nil {
 		return "", 0, err
 	}
-	output, _, code, err := r.pipeline.Read(options...)
+	output, _, code, err := r.pipeline.Read(ctx, options...)
 	if r.options.History != nil {
 		r.options.History.Commands = append(r.options.History.Commands, runner.NewCommand(command, output, err))
 	}
@@ -55,17 +56,17 @@ func (r *Runner) runCommand(command string) error {
 	return nil
 }
 
-func (r *Runner) initIfNeeded() error {
+func (r *Runner) initIfNeeded(ctx context.Context) error {
 	if !atomic.CompareAndSwapUint32(&r.inited, 0, 1) {
 		return nil
 	}
-	if err := r.init(); err != nil {
+	if err := r.init(ctx); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *Runner) init() error {
+func (r *Runner) init(ctx context.Context) error {
 	r.cmd = exec.Command(r.options.Shell)
 	r.cmd.Env = r.options.Environ()
 	var err error
@@ -85,12 +86,12 @@ func (r *Runner) init() error {
 	if err := r.cmd.Start(); err != nil {
 		return err
 	}
-	r.pipeline, err = runner.NewPipeline(r.stdin, stdout, stderr, r.options)
+	r.pipeline, err = runner.NewPipeline(ctx, r.stdin, stdout, stderr, r.options)
 	if r.options.Path != "" {
-		_, _, err = r.Run("cd " + r.options.Path)
+		_, _, err = r.Run(ctx, "cd "+r.options.Path)
 	}
 	if len(r.options.SystemPaths) > 0 {
-		_, _, err = r.Run("export PATH=$PATH:" + strings.Join(r.options.SystemPaths, ":"))
+		_, _, err = r.Run(ctx, "export PATH=$PATH:"+strings.Join(r.options.SystemPaths, ":"))
 	}
 	return err
 }

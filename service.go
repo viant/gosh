@@ -1,6 +1,7 @@
 package gosh
 
 import (
+	"context"
 	"github.com/viant/gosh/runner"
 	"strings"
 )
@@ -17,8 +18,8 @@ func (s *Service) Close() error {
 }
 
 // Run runs supplied command
-func (s *Service) Run(command string, options ...runner.Option) (string, int, error) {
-	return s.runner.Run(command, options...)
+func (s *Service) Run(ctx context.Context, command string, options ...runner.Option) (string, int, error) {
+	return s.runner.Run(ctx, command, options...)
 }
 
 // PID returns process id
@@ -36,19 +37,19 @@ func (s *Service) HardwareInfo() *HardwareInfo {
 	return s.hwInfo
 }
 
-func (s *Service) init() error {
-	return s.detectSystem()
+func (s *Service) init(ctx context.Context) error {
+	return s.detectSystem(ctx)
 }
 
-func (s *Service) detectSystem() (err error) {
+func (s *Service) detectSystem(ctx context.Context) (err error) {
 	s.osInfo = &OSInfo{}
 	s.hwInfo = &HardwareInfo{Architecture: "unknown"}
 	var e error
-	if s.osInfo.System, _, e = s.runner.Run("uname -s"); err != nil {
+	if s.osInfo.System, _, e = s.runner.Run(ctx, "uname -s"); err != nil {
 		err = e
 	}
 	s.osInfo.System = strings.ToLower(s.osInfo.System)
-	if s.hwInfo.Hardware, _, e = s.runner.Run("uname -m"); err != nil {
+	if s.hwInfo.Hardware, _, e = s.runner.Run(ctx, "uname -m"); err != nil {
 		err = e
 	}
 	s.hwInfo.Hardware = strings.ToLower(s.hwInfo.Hardware)
@@ -68,7 +69,7 @@ func (s *Service) detectSystem() (err error) {
 		s.hwInfo.Architecture = "arm64"
 		s.hwInfo.Arch = "x64"
 	}
-	output, _, e := s.runner.Run(checkCmd)
+	output, _, e := s.runner.Run(ctx, checkCmd)
 	if e != nil {
 		err = e
 	}
@@ -118,7 +119,7 @@ func isAppleArm64Architecture(hardware string) bool {
 }
 
 // New creates a new shell service
-func New(runner runner.Runner) (*Service, error) {
+func New(ctx context.Context, runner runner.Runner) (*Service, error) {
 	ret := &Service{runner: runner}
-	return ret, ret.init()
+	return ret, ret.init(ctx)
 }

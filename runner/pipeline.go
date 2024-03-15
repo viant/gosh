@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"github.com/viant/gosh/term"
 	"io"
@@ -41,10 +42,10 @@ func (p *Pipeline) FormatCmd(cmd string) string {
 }
 
 // Drain reads any outstanding output
-func (p *Pipeline) Drain() {
+func (p *Pipeline) Drain(ctx context.Context, opts ...Option) {
 	//read any outstanding output
 	for {
-		_, has, _, _ := p.Read(WithTimeout(drainTimeoutMs))
+		_, has, _, _ := p.Read(ctx, WithTimeout(drainTimeoutMs))
 		if !has {
 			return
 		}
@@ -120,7 +121,7 @@ func (p *Pipeline) closeIfError(writeError error) error {
 var defaultCode = 0
 
 // Read reads output
-func (p *Pipeline) Read(opts ...Option) (output string, has bool, code int, err error) {
+func (p *Pipeline) Read(ctx context.Context, opts ...Option) (output string, has bool, code int, err error) {
 	options := p.options.Apply(opts)
 	timeoutMs := options.timeoutMs
 	var hasPrompt, hasTerminator bool
@@ -182,6 +183,8 @@ outer:
 			if (hasPrompt || hasTerminator) && len(p.error) == 0 {
 				break outer
 			}
+		case <-ctx.Done():
+			// Context was cancelled or timed out
 		case <-time.After(timeoutDuration):
 			waitTimeMs += tickFrequencyMs
 			if waitTimeMs >= timeoutMs {
@@ -285,7 +288,7 @@ func (p *Pipeline) hasTerminator(input string, terminators ...string) bool {
 	return false
 }
 
-func (p *Pipeline) init(input io.WriteCloser) error {
+func (p *Pipeline) init(ctx context.Context, input io.WriteCloser) error {
 	started := sync.WaitGroup{}
 	started.Add(2)
 	go p.copy(p.stdout, p.output, &started)
@@ -294,11 +297,11 @@ func (p *Pipeline) init(input io.WriteCloser) error {
 	if p.options.shellPrompt == "" {
 		return nil
 	}
-	p.Drain()
+	p.Drain(ctx)
 	cmd := `PS1="` + p.options.shellPrompt + "\"\n"
 	_, err := input.Write([]byte(cmd))
 	if err == nil {
-		p.Read(WithTimeout(600))
+		p.Read(ctx, WithTimeout(600))
 	}
 	return err
 }
@@ -316,7 +319,7 @@ func addLineBreakIfNeeded(text string) string {
 }
 
 // NewPipeline creates a new pipeline
-func NewPipeline(in io.WriteCloser, stdout io.Reader, stderr io.Reader, options *Options) (*Pipeline, error) {
+func NewPipeline(ctx context.Context, in io.WriteCloser, stdout io.Reader, stderr io.Reader, options *Options) (*Pipeline, error) {
 	ret := &Pipeline{
 		running: 1,
 		options: options,
@@ -325,5 +328,5 @@ func NewPipeline(in io.WriteCloser, stdout io.Reader, stderr io.Reader, options 
 		output:  make(chan string, 1),
 		error:   make(chan string, 1),
 	}
-	return ret, ret.init(in)
+	return ret, ret.init(ctx, in)
 }

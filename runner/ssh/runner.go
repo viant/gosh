@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"context"
 	"fmt"
 	"github.com/viant/gosh/runner"
 	"golang.org/x/crypto/ssh"
@@ -44,7 +45,7 @@ func (r *Runner) Close() (err error) {
 	return err
 }
 
-func (r *Runner) start() (err error) {
+func (r *Runner) start(ctx context.Context) (err error) {
 	r.session, err = r.client.NewSession()
 	for k, v := range r.options.Env {
 		err = r.session.Setenv(k, v)
@@ -75,21 +76,21 @@ func (r *Runner) start() (err error) {
 	if err = r.session.Start(r.options.Shell); err != nil {
 		return err
 	}
-	r.pipeline, err = runner.NewPipeline(r.stdin, outPipe, errPipe, r.options)
+	r.pipeline, err = runner.NewPipeline(ctx, r.stdin, outPipe, errPipe, r.options)
 	if err != nil {
 		return err
 	}
 	var pid string
-	pid, _, err = r.Run("echo $$")
+	pid, _, err = r.Run(ctx, "echo $$")
 	if err == nil {
 		pid = strings.TrimSpace(pid)
 		r.pid, err = strconv.Atoi(pid)
 	}
 	if r.options.Path != "" {
-		_, _, err = r.Run("cd " + r.options.Path)
+		_, _, err = r.Run(ctx, "cd "+r.options.Path)
 	}
 	if len(r.options.SystemPaths) > 0 {
-		_, _, err = r.Run("export PATH=$PATH:" + strings.Join(r.options.SystemPaths, ":"))
+		_, _, err = r.Run(ctx, "export PATH=$PATH:"+strings.Join(r.options.SystemPaths, ":"))
 	}
 
 	return err
@@ -99,7 +100,7 @@ func (r *Runner) start() (err error) {
 func (r *Runner) PID() int {
 	return r.pid
 }
-func (r *Runner) init() (err error) {
+func (r *Runner) init(ctx context.Context) (err error) {
 	if r.client == nil {
 		if err = r.connect(); err != nil {
 			return err
@@ -110,24 +111,24 @@ func (r *Runner) init() (err error) {
 			r.client.Close()
 		}
 	}()
-	err = r.start()
+	err = r.start(ctx)
 	return err
 }
 
 // Run runs supplied command
-func (r *Runner) Run(command string, options ...runner.Option) (string, int, error) {
-	if err := r.initIfNeeded(); err != nil {
+func (r *Runner) Run(ctx context.Context, command string, options ...runner.Option) (string, int, error) {
+	if err := r.initIfNeeded(ctx); err != nil {
 		return "", 0, err
 	}
 	if !r.pipeline.Running() {
 		return "", 0, r.pipeline.Err()
 	}
-	r.pipeline.Drain()
+	r.pipeline.Drain(ctx)
 	err := r.runCommand(command)
 	if err != nil {
 		return "", 0, err
 	}
-	output, _, code, err := r.pipeline.Read(options...)
+	output, _, code, err := r.pipeline.Read(ctx, options...)
 	if r.options.History != nil {
 		r.options.History.Commands = append(r.options.History.Commands, runner.NewCommand(command, output, err))
 	}
@@ -143,11 +144,11 @@ func (r *Runner) runCommand(command string) error {
 	return nil
 }
 
-func (r *Runner) initIfNeeded() error {
+func (r *Runner) initIfNeeded(ctx context.Context) error {
 	if !atomic.CompareAndSwapUint32(&r.inited, 0, 1) {
 		return nil
 	}
-	if err := r.init(); err != nil {
+	if err := r.init(ctx); err != nil {
 		return err
 	}
 	return nil
