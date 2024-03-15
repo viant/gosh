@@ -194,7 +194,7 @@ outer:
 		}
 	}
 	if errOut != "" {
-		err = fmt.Errorf(errOut)
+		out += errOut
 	}
 
 	if len(out) > 0 {
