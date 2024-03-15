@@ -11,6 +11,9 @@ type Runner struct {
 	pid  int
 }
 
+func (r *Runner) Close() error {
+	return nil
+}
 func (r *Runner) matchRemove(input string) *runner.Command {
 	var matched *runner.Command
 	var from []*runner.Command
