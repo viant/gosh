@@ -6,7 +6,7 @@ import (
 
 const (
 	defaultShell      = "/bin/sh"
-	defaultTimeoutMs  = 20000
+	defaultTimeoutMs  = 60000
 	defaultBufferSize = 128 * 1024
 )
 
