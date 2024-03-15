@@ -11,6 +11,11 @@ type Service struct {
 	runner runner.Runner
 	osInfo *OSInfo
 	hwInfo *HardwareInfo
+	user   string
+}
+
+func (s *Service) User() string {
+	return s.user
 }
 
 func (s *Service) Close() error {
@@ -93,6 +98,9 @@ func (s *Service) detectSystem(ctx context.Context) (err error) {
 			s.osInfo.Release = strings.ToLower(val)
 		}
 
+	}
+	if s.user, _, e = s.runner.Run(ctx, "echo $USER"); err != nil {
+		err = e
 	}
 	if isNotFound(err) {
 		return nil
