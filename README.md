@@ -36,16 +36,18 @@ package main
 import (
 	"github.com/viant/gosh"
 	"github.com/viant/gosh/local"
+	"context
 )
 
 
 func ExampleLocalRun() {
-    srv, err := gosh.New(local.New())
+	ctx := context.Background()
+    srv, err := gosh.New(ctx, local.New())
     if err != nil {
     return
     }
-    _, _, err = srv.Run("cd /etc")
-    output, _, err := srv.Run("ls -l")
+    _, _, err = srv.Run(ctx, "cd /etc")
+    output, _, err := srv.Run(ctx, "ls -l")
     println(output)
 }
 ```
@@ -78,12 +80,13 @@ func ExampleRemoveRun() {
 	if err != nil {
 		panic(err)
 	}
-	srv, err := gosh.New(ssh.New(host+":22", clientConfig))
+	ctx := context.Background()
+	srv, err := gosh.New(ctx, ssh.New(host+":22", clientConfig))
 	if err != nil {
 		return
 	}
-	_, _, err = srv.Run("cd /etc")
-	output, _, err := srv.Run("ls -l")
+	_, _, err = srv.Run(ctx, "cd /etc")
+	output, _, err := srv.Run(ctx, "ls -l")
 	println(output)
 }
 
