@@ -67,8 +67,6 @@ func (p *Pipeline) Close() (err error) {
 	if !atomic.CompareAndSwapInt32(&p.running, 1, 0) {
 		return nil
 	}
-	close(p.output)
-	close(p.error)
 	if closer, ok := p.stdout.(io.Closer); ok {
 		err = closer.Close()
 	}
@@ -77,6 +75,10 @@ func (p *Pipeline) Close() (err error) {
 			err = e
 		}
 	}
+	time.Sleep(100 * time.Millisecond)
+	close(p.output)
+	close(p.error)
+
 	return err
 }
 
@@ -104,6 +106,9 @@ func (p *Pipeline) copy(reader io.Reader, dest chan string, notification *sync.W
 
 			if bytesRead != bytesWritten {
 				return p.closeIfError(io.ErrShortWrite)
+			}
+			if atomic.LoadInt32(&p.running) == 0 {
+				return nil
 			}
 			dest <- string(writer.Bytes())
 		}
