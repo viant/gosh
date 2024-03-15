@@ -107,9 +107,9 @@ func WithShellPrompt(shellPrompt string) Option {
 }
 
 // WithTimeout creates with timeout option
-func WithTimeout(timeoutSec int) Option {
+func WithTimeout(timeoutMs int) Option {
 	return func(o *Options) {
-		o.timeoutMs = timeoutSec
+		o.timeoutMs = timeoutMs
 	}
 }
 
