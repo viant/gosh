@@ -31,6 +31,19 @@ func (r *Runner) connect() (err error) {
 	return err
 }
 
+func (r *Runner) Close() (err error) {
+	if r.pipeline != nil {
+		_ = r.pipeline.Close()
+	}
+	if r.session != nil {
+		_ = r.session.Close()
+	}
+	if r.client != nil {
+		err = r.client.Close()
+	}
+	return err
+}
+
 func (r *Runner) start() (err error) {
 	r.session, err = r.client.NewSession()
 	for k, v := range r.options.Env {
