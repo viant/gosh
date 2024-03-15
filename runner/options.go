@@ -54,6 +54,9 @@ func (p *Options) Apply(options []Option) *Options {
 	for _, o := range options {
 		o(&ret)
 	}
+	if ret.timeoutMs == 0 {
+		ret.timeoutMs = defaultTimeoutMs
+	}
 	return &ret
 }
 
