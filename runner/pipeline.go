@@ -77,6 +77,7 @@ func (p *Pipeline) Close() (err error) {
 		}
 	}
 	p.done <- true
+	p.Drain(context.Background())
 	time.Sleep(100 * time.Millisecond)
 	close(p.output)
 	close(p.error)
