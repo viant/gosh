@@ -53,11 +53,11 @@ func (s *Service) detectSystem(ctx context.Context) (err error) {
 	if s.osInfo.System, _, e = s.runner.Run(ctx, "uname -s"); err != nil {
 		err = e
 	}
-	s.osInfo.System = strings.ToLower(s.osInfo.System)
+	s.osInfo.System = strings.TrimSpace(strings.TrimSpace(strings.ToLower(s.osInfo.System)))
 	if s.hwInfo.Hardware, _, e = s.runner.Run(ctx, "uname -m"); err != nil {
 		err = e
 	}
-	s.hwInfo.Hardware = strings.ToLower(s.hwInfo.Hardware)
+	s.hwInfo.Hardware = strings.TrimSpace(strings.ToLower(s.hwInfo.Hardware))
 	checkCmd := "lsb_release -a"
 	if s.osInfo.System == "darwin" {
 		checkCmd = "sw_vers"
@@ -102,6 +102,7 @@ func (s *Service) detectSystem(ctx context.Context) (err error) {
 	if s.user, _, e = s.runner.Run(ctx, "echo $USER"); err != nil {
 		err = e
 	}
+	s.user = strings.TrimSpace(s.user)
 	if isNotFound(err) {
 		return nil
 	}
