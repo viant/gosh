@@ -30,6 +30,7 @@ type (
 		output     chan string
 		error      chan string
 		options    *Options
+		done       chan bool
 	}
 )
 
@@ -78,7 +79,7 @@ func (p *Pipeline) Close() (err error) {
 	time.Sleep(100 * time.Millisecond)
 	close(p.output)
 	close(p.error)
-
+	p.done <- true
 	return err
 }
 
@@ -110,7 +111,11 @@ func (p *Pipeline) copy(reader io.Reader, dest chan string, notification *sync.W
 			if atomic.LoadInt32(&p.running) == 0 {
 				return nil
 			}
-			dest <- string(writer.Bytes())
+			select {
+			case dest <- string(writer.Bytes()):
+			case <-p.done:
+			}
+
 		}
 		if err != nil {
 			return p.closeIfError(err)
@@ -333,6 +338,8 @@ func NewPipeline(ctx context.Context, in io.WriteCloser, stdout io.Reader, stder
 		stderr:  stderr,
 		output:  make(chan string, 1),
 		error:   make(chan string, 1),
+		done:    make(chan bool, 1),
 	}
+
 	return ret, ret.init(ctx, in)
 }
