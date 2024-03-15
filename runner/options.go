@@ -154,3 +154,10 @@ func WithListener(listener Listener) Option {
 		o.listener = listener
 	}
 }
+
+// WithTerminators creates with terminators option
+func WithTerminators(terminators []string) Option {
+	return func(o *Options) {
+		o.terminators = terminators
+	}
+}
