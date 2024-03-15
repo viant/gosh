@@ -5,6 +5,7 @@ import (
 	"github.com/viant/gosh/runner"
 	"io"
 	"os/exec"
+	"strings"
 	"sync/atomic"
 )
 
@@ -87,6 +88,9 @@ func (r *Runner) init() error {
 	r.pipeline, err = runner.NewPipeline(r.stdin, stdout, stderr, r.options)
 	if r.options.Path != "" {
 		_, _, err = r.Run("cd " + r.options.Path)
+	}
+	if len(r.options.SystemPaths) > 0 {
+		_, _, err = r.Run("export PATH=$PATH:" + strings.Join(r.options.SystemPaths, ":"))
 	}
 	return err
 }

@@ -20,6 +20,7 @@ type (
 		Rows               int
 		Path               string
 		Env                map[string]string
+		SystemPaths        []string
 		shellPrompt        string
 		escapedShellPrompt string
 		History            *History
@@ -137,5 +138,12 @@ func WithEnvironment(env map[string]string) Option {
 func WithPath(aPath string) Option {
 	return func(o *Options) {
 		o.Path = aPath
+	}
+}
+
+// WithListener creates with listener option
+func WithSystemPaths(paths []string) Option {
+	return func(o *Options) {
+		o.SystemPaths = paths
 	}
 }

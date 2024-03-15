@@ -75,6 +75,10 @@ func (r *Runner) start() (err error) {
 	if r.options.Path != "" {
 		_, _, err = r.Run("cd " + r.options.Path)
 	}
+	if len(r.options.SystemPaths) > 0 {
+		_, _, err = r.Run("export PATH=$PATH:" + strings.Join(r.options.SystemPaths, ":"))
+	}
+
 	return err
 }
 
