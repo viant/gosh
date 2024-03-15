@@ -76,10 +76,11 @@ func (p *Pipeline) Close() (err error) {
 			err = e
 		}
 	}
+	p.done <- true
 	time.Sleep(100 * time.Millisecond)
 	close(p.output)
 	close(p.error)
-	p.done <- true
+
 	return err
 }
 
