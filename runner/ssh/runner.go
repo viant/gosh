@@ -25,6 +25,11 @@ type Runner struct {
 	pid      int
 }
 
+// Stdin returns stdin writer
+func (r *Runner) Stdin() io.Writer {
+	return r.stdin
+}
+
 func (r *Runner) connect() (err error) {
 	if r.client, err = ssh.Dial("tcp", r.host, r.config); err != nil {
 		return fmt.Errorf("failed to dial: %v, %w", r.host, err)

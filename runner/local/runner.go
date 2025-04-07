@@ -19,6 +19,11 @@ type Runner struct {
 	stdin    io.WriteCloser
 }
 
+// Stdin returns stdin writer
+func (r *Runner) Stdin() io.Writer {
+	return r.stdin
+}
+
 // Run runs supplied command
 func (r *Runner) Run(ctx context.Context, command string, options ...runner.Option) (string, int, error) {
 	if err := r.initIfNeeded(ctx); err != nil {
