@@ -265,14 +265,6 @@ func (p *Pipeline) hasPrompt(input string) bool {
 func (p *Pipeline) removePromptIfNeeded(stdout string) string {
 	if strings.Contains(stdout, p.options.shellPrompt) {
 		stdout = strings.Replace(stdout, p.options.shellPrompt, "", 1)
-		var lines = []string{}
-		for _, line := range strings.Split(stdout, "\n") {
-			if strings.TrimSpace(line) == "" {
-				continue
-			}
-			lines = append(lines, line)
-		}
-		stdout = strings.Join(lines, "\n")
 	}
 	return stdout
 }
