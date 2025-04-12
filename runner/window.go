@@ -27,7 +27,7 @@ func (t *window) notify(stdout string) {
 	t.stdout += stdout
 	t.elapsedMs += int(now.Sub(*t.checkpoint) / time.Millisecond)
 	t.checkpoint = &now
-	if t.elapsedMs > t.options.flashIntervalMs {
+	if t.elapsedMs > t.options.flashIntervalMs || t.options.flashIntervalMs == 0 {
 		t.options.listener(t.stdout, true)
 		t.stdout = ""
 		t.elapsedMs = 0

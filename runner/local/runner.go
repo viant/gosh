@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync/atomic"
+	"time"
 )
 
 // Runner represents local runner
@@ -17,15 +18,30 @@ type Runner struct {
 	options  *runner.Options
 	pipeline *runner.Pipeline
 	stdin    io.WriteCloser
+	counter  int32
 }
 
-// Stdin returns stdin writer
-func (r *Runner) Stdin() io.Writer {
-	return r.stdin
+// Send sends data to stdin
+func (r *Runner) Send(ctx context.Context, data []byte) (int, error) {
+	r.ensureCommandStarted()
+	if atomic.LoadUint32(&r.inited) == 0 {
+		return 0, fmt.Errorf("command not started")
+	}
+	return r.stdin.Write(data)
+}
+
+func (r *Runner) ensureCommandStarted() {
+	for i := 0; i < 1000; i++ {
+		if atomic.LoadInt32(&r.counter) > 0 {
+			break
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
 }
 
 // Run runs supplied command
 func (r *Runner) Run(ctx context.Context, command string, options ...runner.Option) (string, int, error) {
+
 	if err := r.initIfNeeded(ctx); err != nil {
 		return "", 0, err
 	}
@@ -33,7 +49,13 @@ func (r *Runner) Run(ctx context.Context, command string, options ...runner.Opti
 		return "", 0, r.pipeline.Err()
 	}
 	r.pipeline.Drain(ctx)
+
+	if r.options.AsPipeline() {
+		return r.runAsPipeline(ctx, command, options)
+	}
+
 	err := r.runCommand(command)
+	atomic.AddInt32(&r.counter, 1)
 	if err != nil {
 		return "", 0, err
 	}
@@ -42,6 +64,17 @@ func (r *Runner) Run(ctx context.Context, command string, options ...runner.Opti
 		r.options.History.Commands = append(r.options.History.Commands, runner.NewCommand(command, output, err))
 	}
 	return output, code, err
+}
+
+func (r *Runner) runAsPipeline(ctx context.Context, command string, options []runner.Option) (string, int, error) {
+	cmd := runner.EnsureLineTermination(command)
+	_, err := r.stdin.Write([]byte(cmd))
+	atomic.AddInt32(&r.counter, 1)
+	if err != nil {
+		return "", -1, err
+	}
+	err = r.pipeline.Listen(ctx, options...)
+	return "", -1, err
 }
 
 // PID returns process id

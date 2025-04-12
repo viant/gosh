@@ -23,13 +23,23 @@ type Runner struct {
 	pipeline *runner.Pipeline
 	stdin    io.WriteCloser
 	pid      int
+	counter  int32
 }
 
-// Stdin returns stdin writer
-func (r *Runner) Stdin() io.Writer {
-	return r.stdin
+// Send returns stdin writer
+func (r *Runner) Send(ctx context.Context, data []byte) (int, error) {
+	r.ensureCommandStarted()
+	return r.stdin.Write(data)
 }
 
+func (r *Runner) ensureCommandStarted() {
+	for i := 0; i < 1000; i++ {
+		if atomic.LoadInt32(&r.counter) > 0 {
+			break
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
+}
 func (r *Runner) connect() (err error) {
 	if r.client, err = ssh.Dial("tcp", r.host, r.config); err != nil {
 		return fmt.Errorf("failed to dial: %v, %w", r.host, err)
@@ -129,7 +139,13 @@ func (r *Runner) Run(ctx context.Context, command string, options ...runner.Opti
 		return "", 0, r.pipeline.Err()
 	}
 	r.pipeline.Drain(ctx)
+
+	if r.options.AsPipeline() {
+		return r.runAsPipeline(ctx, command, options)
+	}
+
 	err := r.runCommand(command)
+	atomic.AddInt32(&r.counter, 1)
 	if err != nil {
 		return "", 0, err
 	}
@@ -138,6 +154,17 @@ func (r *Runner) Run(ctx context.Context, command string, options ...runner.Opti
 		r.options.History.Commands = append(r.options.History.Commands, runner.NewCommand(command, output, err))
 	}
 	return output, code, err
+}
+
+func (r *Runner) runAsPipeline(ctx context.Context, command string, options []runner.Option) (string, int, error) {
+	cmd := runner.EnsureLineTermination(command)
+	_, err := r.stdin.Write([]byte(cmd))
+	atomic.AddInt32(&r.counter, 1)
+	if err != nil {
+		return "", -1, err
+	}
+	err = r.pipeline.Listen(ctx, append(options, runner.WithFlashIntervalMs(0))...)
+	return "", -1, err
 }
 
 func (r *Runner) runCommand(command string) error {
@@ -162,9 +189,10 @@ func (r *Runner) initIfNeeded(ctx context.Context) error {
 // New creates a new runner
 func New(host string, config *ssh.ClientConfig, opts ...runner.Option) *Runner {
 	opts = append([]runner.Option{runner.WithShellPrompt("shh-" + strconv.Itoa(int(time.Now().UnixMilli())) + "$")}, opts...)
-	return &Runner{
+	ret := &Runner{
 		host:    host,
 		config:  config,
 		options: runner.NewOptions(opts),
 	}
+	return ret
 }

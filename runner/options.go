@@ -29,6 +29,7 @@ type (
 		timeoutMs          int
 		flashIntervalMs    int
 		terminators        []string
+		pipeline           bool
 	}
 
 	//Option represents runner option
@@ -36,21 +37,25 @@ type (
 )
 
 // Environ returns environment variables
-func (p *Options) Environ() []string {
+func (o *Options) Environ() []string {
 	var result []string
-	if len(p.Env) == 0 {
+	if len(o.Env) == 0 {
 		return result
 	}
-	for k, v := range p.Env {
+	for k, v := range o.Env {
 		result = append(result, k+"="+v)
 	}
 	return result
 
 }
 
+func (o *Options) AsPipeline() bool {
+	return o.pipeline
+}
+
 // Apply applies options
-func (p *Options) Apply(options []Option) *Options {
-	ret := *p
+func (o *Options) Apply(options []Option) *Options {
+	ret := *o
 	for _, o := range options {
 		o(&ret)
 	}
@@ -162,5 +167,11 @@ func WithListener(listener Listener) Option {
 func WithTerminators(terminators []string) Option {
 	return func(o *Options) {
 		o.terminators = terminators
+	}
+}
+
+func AsPipeline() Option {
+	return func(o *Options) {
+		o.pipeline = true
 	}
 }

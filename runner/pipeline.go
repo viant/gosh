@@ -36,10 +36,15 @@ type (
 
 // FormatCmd formats command
 func (p *Pipeline) FormatCmd(cmd string) string {
+	cmd = EnsureLineTermination(cmd)
+	return cmd + "echo 'status:'$?\n"
+}
+
+func EnsureLineTermination(cmd string) string {
 	if !strings.HasSuffix(cmd, "\n") {
 		cmd += "\n"
 	}
-	return cmd + "echo 'status:'$?\n"
+	return cmd
 }
 
 // Drain reads any outstanding output
@@ -131,6 +136,28 @@ func (p *Pipeline) closeIfError(writeError error) error {
 }
 
 var defaultCode = 0
+
+// Listen listens for output
+func (p *Pipeline) Listen(ctx context.Context, opts ...Option) error {
+	options := p.options.Apply(opts)
+	window := newWindow(options)
+	defer window.flush()
+	for {
+		select {
+		case partialOutput := <-p.output:
+			if len(partialOutput) > 0 {
+				window.notify(partialOutput)
+			}
+		case e := <-p.error:
+			if len(e) > 0 {
+				window.notify(e)
+			}
+			return fmt.Errorf("pipeline: %v", e)
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
 
 // Read reads output
 func (p *Pipeline) Read(ctx context.Context, opts ...Option) (output string, has bool, code int, err error) {
