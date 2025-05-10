@@ -6,7 +6,6 @@ Please refer to [`CHANGELOG.md`](CHANGELOG.md) if you encounter breaking changes
 
 
 - [Motivation](#motivation)
-- [Introduction](#introduction)
 - [Usage](#usage)
 - [License](#license)
 - [Credits and Acknowledgements](#credits-and-acknowledgements)
@@ -91,7 +90,41 @@ func ExampleRemoveRun() {
 }
 
 ```
+## Model Context Protocol Integration
 
+The `gosh` library can be integrated with the Model Context Protocol (MCP) to provide a seamless experience for executing commands in a  local or remote shell environment. The integration allows for efficient communication between the client and server, enabling real-time command execution and response handling.
+
+```go
+package mypackage
+
+import (
+	"context"
+	serverproto "github.com/viant/mcp-protocol/server"
+	"github.com/viant/mcp-protocol/schema"
+	"github.com/viant/mcp/server"
+	"github.com/viant/gosh/mcp"
+
+)	
+
+
+func ExampleMCPIntegration() error {
+
+	newImplementer := serverproto.WithDefaultImplementer(context.Background(), func(implementer *serverproto.DefaultImplementer) error {
+		err := mcp.Register(implementer)
+		return err
+	})
+	srv, err := server.New(
+        server.WithNewImplementer(newImplementer),
+        server.WithImplementation(schema.Implementation{"default", "1.0"}),
+        server.WithCapabilities(schema.ServerCapabilities{Resources: &schema.ServerCapabilitiesResources{}}),
+    )
+    if err != nil {
+		return  err
+    }
+	return srv.HTTP(context.Background(), ":4981").ListenAndServe()
+}
+    
+```
 
 
 ## License
