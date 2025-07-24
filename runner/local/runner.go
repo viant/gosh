@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -106,6 +107,11 @@ func (r *Runner) initIfNeeded(ctx context.Context) error {
 
 func (r *Runner) init(ctx context.Context) error {
 	r.cmd = exec.Command(r.options.Shell)
+
+	r.cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+
 	r.cmd.Env = r.options.Environ()
 	var err error
 	r.stdin, err = r.cmd.StdinPipe()
