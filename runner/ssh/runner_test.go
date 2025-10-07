@@ -3,12 +3,13 @@ package ssh
 import (
 	"bytes"
 	"context"
-	"github.com/stretchr/testify/assert"
-	"github.com/viant/afs"
-	"github.com/viant/scy/cred"
 	"os"
 	"path"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/viant/afs"
+	"github.com/viant/scy/cred"
 )
 
 func TestService_Run(t *testing.T) {
@@ -17,7 +18,7 @@ func TestService_Run(t *testing.T) {
 		return
 	}
 	sshCred := cred.SSH{
-		PrivateKey: privateKeyBytes,
+		PrivateKeyPayload: privateKeyBytes,
 		Basic: cred.Basic{
 			Username: os.Getenv("USER"),
 		},
@@ -27,8 +28,9 @@ func TestService_Run(t *testing.T) {
 		return
 	}
 
+	ctx := context.Background()
 	runner := New("127.0.0.1:22", clientConfig)
-	output, _, err := runner.Run("ls /")
+	output, _, err := runner.Run(ctx, "ls /")
 	assert.Nil(t, err)
 	assert.Truef(t, len(output) > 0, "output was empty")
 	assert.True(t, runner.PID() > 0)

@@ -15,7 +15,9 @@ import (
 
 const (
 	defaultTickFrequency = 100
-	drainTimeoutMs       = 20
+	// Slightly higher drain timeout to reduce flakiness when residual output
+	// appears just after issuing a new command.
+	drainTimeoutMs = 100
 )
 
 type (
@@ -34,66 +36,30 @@ type (
 	}
 )
 
-// FormatCmd formats command
 // FormatCmd formats a command that is sent to an interactive shell via stdin.
 //
-// The command has a "status:" marker appended so that the runner can detect
-// when the command has finished and capture its exit code.
+// We always append a "status:" marker so the runner can detect completion and
+// capture the exit code. To prevent the executed command from accidentally
+// consuming the shell's stdin (which also carries our status marker), we wrap
+// the user command in a command group and redirect that group's stdin to
+// /dev/null. Explicit stdin redirections inside the user command still take
+// precedence.
 //
-// A tricky corner-case arises when the executed command attempts to read from
-// STDIN (for example, utilities such as `rg`, `grep`, `cat` when no file
-// arguments are supplied). Since the same STDIN is also used to feed further
-// commands to the shell, such programs can accidentally consume the
-// subsequently appended marker making the runner believe the command never
-// finished. To prevent the command from draining the shell’s STDIN we redirect
-// its standard input to `/dev/null`.  In practice this is equivalent to what
-// most shells do for non-interactive execution and is safe for the majority of
-// use-cases where gosh is employed.  If a caller really needs to feed data to
-// the command via STDIN they should use pipeline mode (Options.AsPipeline) or
-// the Runner.Send API which bypasses this redirection.
+// Final layout:
 //
-// The final layout therefore looks like:
-//
-//	<user_command> < /dev/null
+//	{ <user_command>; } </dev/null
 //	echo 'status:'$?
 //
-// Using a newline before the echo avoids any dependency on command chaining
-// operators while keeping the construction simple.
+// Using a group redirection avoids brittle parsing (quotes, pipes, heredocs)
+// and reliably shields the shell stdin across a wide range of inputs.
 func (p *Pipeline) FormatCmd(cmd string) string {
 	// Ensure the user command finishes with a newline so we can safely append
 	// additional directives.
 	cmd = EnsureLineTermination(cmd)
-
-	// If the command already contains an explicit input redirection we leave
-	// it intact, otherwise we protect the shell stdin with "/dev/null".
-	trimmed := strings.TrimSpace(cmd)
-	// If the command already specifies its own stdin redirection we leave it untouched.
-	// We purposefully allow pipes ("|") because the first element of a pipeline can still
-	// block waiting for STDIN – redirecting it to /dev/null avoids that situation.
-	if !strings.Contains(trimmed, "<") {
-		// We need to ensure the redirection applies to the first command in a
-		// possible pipeline.  The simplest approach is:
-		//   * If a pipe exists, inject the redirection **before** the first pipe
-		//     so that it is bound to the command preceding the pipe.
-		//   * Otherwise append the redirection at the very end (before the
-		//     newline) as we did previously.
-
-		if pipePos := strings.Index(trimmed, "|"); pipePos != -1 {
-			// Locate the pipe position in the original cmd string (that still
-			// contains the trailing newline).
-			newlineRemoved := strings.TrimSuffix(cmd, "\n")
-			// Split once at the first pipe symbol.
-			parts := strings.SplitN(newlineRemoved, "|", 2)
-			// Insert redirection after the left part (first command).
-			newlineRemoved = strings.TrimSpace(parts[0]) + " < /dev/null |" + parts[1]
-			cmd = newlineRemoved + "\n"
-		} else {
-			// No pipeline – append redirection to the sole command.
-			cmd = strings.TrimSuffix(cmd, "\n") + " < /dev/null\n"
-		}
-	}
+	body := strings.TrimSuffix(cmd, "\n")
+	grouped := "{ " + body + "; } </dev/null\n"
 	// Append the status marker.
-	return cmd + "echo 'status:'$?\n"
+	return grouped + "echo 'status:'$?\n"
 }
 
 func EnsureLineTermination(cmd string) string {
