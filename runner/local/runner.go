@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"github.com/viant/gosh/runner"
 	"io"
+	"os"
 	"os/exec"
-	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
@@ -107,12 +106,16 @@ func (r *Runner) initIfNeeded(ctx context.Context) error {
 
 func (r *Runner) init(ctx context.Context) error {
 	r.cmd = exec.Command(r.options.Shell)
+	// Apply OS-specific process attributes
+	r.cmd.SysProcAttr = newSysProcAttr()
 
-	r.cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
+	// Working directory
+	if r.options.Path != "" {
+		r.cmd.Dir = r.options.Path
 	}
 
-	r.cmd.Env = r.options.Environ()
+	// Environment: start from current env, apply overrides, and extend PATH
+	r.cmd.Env = r.buildEnv()
 	var err error
 	r.stdin, err = r.cmd.StdinPipe()
 	if err != nil {
@@ -131,12 +134,6 @@ func (r *Runner) init(ctx context.Context) error {
 		return err
 	}
 	r.pipeline, err = runner.NewPipeline(ctx, r.stdin, stdout, stderr, r.options)
-	if r.options.Path != "" {
-		_, _, err = r.Run(ctx, "cd "+r.options.Path)
-	}
-	if len(r.options.SystemPaths) > 0 {
-		_, _, err = r.Run(ctx, "export PATH=$PATH:"+strings.Join(r.options.SystemPaths, ":"))
-	}
 	return err
 }
 
@@ -158,4 +155,115 @@ func (r *Runner) Close() error {
 func New(options ...runner.Option) *Runner {
 	opts := runner.NewOptions(options)
 	return &Runner{options: opts}
+}
+
+// buildEnv constructs the environment for the shell process by:
+// - starting from the current environment
+// - applying any explicit overrides from options.Env
+// - appending SystemPaths to PATH in an OS-appropriate way
+func (r *Runner) buildEnv() []string {
+	base := os.Environ()
+
+	// Convert base to map for easy mutation (preserve key casing for PATH when present)
+	envMap := make(map[string]string, len(base))
+	order := make([]string, 0, len(base))
+	for _, kv := range base {
+		if idx := indexOfEqual(kv); idx != -1 {
+			k := kv[:idx]
+			v := kv[idx+1:]
+			envMap[k] = v
+			order = append(order, k)
+		}
+	}
+
+	// Apply explicit env overrides
+	if len(r.options.Environ()) > 0 {
+		for k, v := range r.options.Env {
+			if _, ok := envMap[k]; !ok {
+				order = append(order, k)
+			}
+			envMap[k] = v
+		}
+	}
+
+	// Extend PATH with SystemPaths if provided
+	if len(r.options.SystemPaths) > 0 {
+		// Find existing PATH key respecting Windows case-insensitivity
+		pathKey := "PATH"
+		for k := range envMap {
+			if equalFold(k, "PATH") {
+				pathKey = k
+				break
+			}
+		}
+		sep := string(os.PathListSeparator)
+		current := envMap[pathKey]
+		// Append system paths to existing PATH
+		for _, p := range r.options.SystemPaths {
+			if current == "" {
+				current = p
+			} else {
+				current += sep + p
+			}
+		}
+		// If PATH wasn't in base env, ensure order includes it once
+		if _, ok := envMap[pathKey]; !ok {
+			order = append(order, pathKey)
+		}
+		envMap[pathKey] = current
+	}
+
+	// Rebuild slice preserving original order (with new/overridden keys at end)
+	out := make([]string, 0, len(envMap))
+	seen := map[string]bool{}
+	for _, k := range order {
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		out = append(out, k+"="+envMap[k])
+	}
+	// Add any keys not in order (shouldn't happen, but be safe)
+	for k, v := range envMap {
+		if !seen[k] {
+			out = append(out, k+"="+v)
+		}
+	}
+	return out
+}
+
+func indexOfEqual(s string) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '=' {
+			return i
+		}
+	}
+	return -1
+}
+
+func equalFold(a, b string) bool {
+	if a == b {
+		return true
+	}
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		ca := a[i]
+		cb := b[i]
+		if ca == cb {
+			continue
+		}
+		// ASCII-only case fold sufficient for env keys
+		if 'A' <= ca && ca <= 'Z' {
+			ca = ca + ('a' - 'A')
+		}
+		if 'A' <= cb && cb <= 'Z' {
+			cb = cb + ('a' - 'A')
+		}
+		if ca != cb {
+			return false
+		}
+	}
+	return true
 }

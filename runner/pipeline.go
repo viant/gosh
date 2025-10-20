@@ -38,17 +38,22 @@ type (
 
 // FormatCmd formats a command that is sent to an interactive shell via stdin.
 //
-// We always append a "status:" marker so the runner can detect completion and
-// capture the exit code. To prevent the executed command from accidentally
-// consuming the shell's stdin (which also carries our status marker), we wrap
-// the user command in a command group and redirect that group's stdin to
-// /dev/null. Explicit stdin redirections inside the user command still take
-// precedence.
+// Key guarantees:
+//   - Always append a "status:" marker so the runner can detect completion and
+//     capture the exit code.
+//   - Shield the shell's stdin from the user command by grouping and redirecting
+//     that group's stdin to /dev/null. This prevents commands that read from
+//     stdin from consuming the subsequently appended status marker. Explicit
+//     stdin redirections inside the user command still take precedence.
+//   - Attempt to enable 'pipefail' (if supported) inside the group so pipelines
+//     report a non-zero status when any segment fails. On shells without
+//     pipefail, this attempt is silenced and the status falls back to that of the
+//     last command in the pipeline (standard POSIX behavior).
 //
 // Final layout:
 //
-//	{ <user_command>; } </dev/null
-//	echo 'status:'$?
+//	{ set -o pipefail 2>/dev/null; <user_command>; } </dev/null
+//	status=$?; echo 'status:'$status
 //
 // Using a group redirection avoids brittle parsing (quotes, pipes, heredocs)
 // and reliably shields the shell stdin across a wide range of inputs.
@@ -57,9 +62,10 @@ func (p *Pipeline) FormatCmd(cmd string) string {
 	// additional directives.
 	cmd = EnsureLineTermination(cmd)
 	body := strings.TrimSuffix(cmd, "\n")
-	grouped := "{ " + body + "; } </dev/null\n"
-	// Append the status marker.
-	return grouped + "echo 'status:'$?\n"
+	grouped := "{ set -o pipefail 2>/dev/null; " + body + "; } </dev/null\n"
+	// Capture and print the exit status in a way that is robust in shells
+	// where a newline may separate commands; keep it simple and POSIX friendly.
+	return grouped + "status=$?; echo 'status:'$status\n"
 }
 
 func EnsureLineTermination(cmd string) string {

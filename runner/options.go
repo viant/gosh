@@ -5,10 +5,12 @@ import (
 )
 
 const (
-	defaultShell      = "/bin/sh"
 	defaultTimeoutMs  = 60000
 	defaultBufferSize = 128 * 1024
 )
+
+// defaultShell is OS-specific; overridden on Windows in options_windows.go.
+var defaultShell = "/bin/sh"
 
 type (
 	//Options represents runner options
