@@ -4,13 +4,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/viant/gosh/term"
 	"io"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/viant/gosh/term"
 )
 
 const (
@@ -58,14 +60,40 @@ type (
 // Using a group redirection avoids brittle parsing (quotes, pipes, heredocs)
 // and reliably shields the shell stdin across a wide range of inputs.
 func (p *Pipeline) FormatCmd(cmd string) string {
-	// Ensure the user command finishes with a newline so we can safely append
-	// additional directives.
+	shell := strings.ToLower(p.options.Shell)
+	if runtime.GOOS == "windows" || strings.Contains(shell, "cmd.exe") || strings.Contains(shell, "powershell") || strings.Contains(shell, "pwsh") {
+		return p.formatCmdWindows(cmd)
+	}
+	return p.formatCmdPosix(cmd)
+}
+
+func (p *Pipeline) formatCmdPosix(cmd string) string {
 	cmd = EnsureLineTermination(cmd)
 	body := strings.TrimSuffix(cmd, "\n")
 	grouped := "{ set -o pipefail 2>/dev/null; " + body + "; } </dev/null\n"
-	// Capture and print the exit status in a way that is robust in shells
-	// where a newline may separate commands; keep it simple and POSIX friendly.
 	return grouped + "status=$?; echo 'status:'$status\n"
+}
+
+func (p *Pipeline) formatCmdWindows(cmd string) string {
+	shell := strings.ToLower(p.options.Shell)
+	if strings.Contains(shell, "powershell") || strings.Contains(shell, "pwsh") {
+		// PowerShell: Use try/catch and $LASTEXITCODE for external commands
+		// Note: $LASTEXITCODE is 0 by default; commands that throw set $?
+		// We prioritize external tool exit code semantics here.
+		cmd = EnsureLineTermination(cmd)
+		body := strings.TrimSuffix(cmd, "\n")
+		// Redirect stdin from $null is not necessary in PowerShell; avoid complexity.
+		// Emit status from $LASTEXITCODE; best-effort for native commands.
+		return body + "; $code = $LASTEXITCODE; Write-Output \"status:$code\"\r\n"
+	}
+	// cmd.exe: group with parentheses, protect stdin with NUL, emit %ERRORLEVEL%
+	// Ensure CRLF to be friendly with cmd.exe
+	if !strings.HasSuffix(cmd, "\n") {
+		cmd += "\n"
+	}
+	body := strings.TrimSuffix(cmd, "\n")
+	grouped := "(" + body + ") < NUL\r\n"
+	return grouped + "echo status:%ERRORLEVEL%\r\n"
 }
 
 func EnsureLineTermination(cmd string) string {
@@ -358,6 +386,10 @@ func (p *Pipeline) init(ctx context.Context, input io.WriteCloser) error {
 		return nil
 	}
 	p.Drain(ctx)
+	// Set prompt only on POSIX shells; skip on Windows.
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	cmd := `PS1="` + p.options.shellPrompt + "\"\n"
 	_, err := input.Write([]byte(cmd))
 	if err == nil {
