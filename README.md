@@ -151,3 +151,10 @@ all compatible with Apache License, Version 2. Please see individual files for d
 Authors:
 
 - Adrian Witas
+
+A command read that reaches its idle timeout before a completion marker or an
+explicit terminator returns `runner.ErrTimeout`, exit code `-1` (unknown), and
+any partial output. It never reports a successful exit from silence. The timeout
+does not terminate the command; close the runner when abandoning that session.
+Configured terminators and received exit status markers retain their existing
+completion behavior.

@@ -87,3 +87,17 @@ func TestService_Run_ConcurrentCallsSerialized(t *testing.T) {
 	}
 	assert.Equal(t, workers, len(seen))
 }
+
+func TestServiceRunIncompleteCommandReturnsTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("requires POSIX shell and sleep")
+	}
+	r := New()
+	t.Cleanup(func() { _ = r.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, code, err := r.Run(ctx, "printf pending; sleep 0.2", runner.WithTimeout(20))
+	require.ErrorIs(t, err, runner.ErrTimeout)
+	assert.Equal(t, -1, code)
+	assert.Equal(t, "pending", out)
+}

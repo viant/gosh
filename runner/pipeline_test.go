@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -71,4 +72,35 @@ func TestPipeline_stripStatusToken(t *testing.T) {
 	p.setStatusMarker(marker)
 	output := "line1\n" + marker + "0\nline2\n"
 	assert.Equal(t, "line1\nline2\n", p.stripStatusToken(output))
+}
+
+func TestPipelineReadTimeoutDoesNotReportSuccess(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		t.Run(fmt.Sprintf("partial=%t", partial), func(t *testing.T) {
+			p := &Pipeline{options: NewOptions(nil), output: make(chan string, 1), error: make(chan string, 1)}
+			p.setStatusMarker("__gosh_status__:timeout:")
+			if partial {
+				p.output <- "pending stdout"
+				p.error <- "pending stderr"
+			}
+			out, has, code, err := p.Read(context.Background(), WithTimeout(20))
+			require.ErrorIs(t, err, ErrTimeout)
+			assert.Equal(t, -1, code, "no exit status was received")
+			assert.Equal(t, partial, has)
+			if partial {
+				assert.Contains(t, out, "pending stdout")
+				assert.Contains(t, out, "pending stderr")
+			}
+		})
+	}
+}
+
+func TestPipelineReadConfiguredTerminatorRemainsSuccessful(t *testing.T) {
+	p := &Pipeline{options: NewOptions(nil), output: make(chan string, 1), error: make(chan string, 1)}
+	p.output <- "ready>"
+	out, has, code, err := p.Read(context.Background(), WithTimeout(20), WithTerminators([]string{"ready>"}))
+	require.NoError(t, err)
+	assert.True(t, has)
+	assert.Equal(t, 0, code)
+	assert.Contains(t, out, "ready>")
 }

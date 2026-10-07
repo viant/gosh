@@ -2,9 +2,9 @@ package runner
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"context"
 	"fmt"
 	"io"
 	"runtime"
@@ -21,7 +21,7 @@ const (
 	defaultTickFrequency = 100
 	// Slightly higher drain timeout to reduce flakiness when residual output
 	// appears just after issuing a new command.
-	drainTimeoutMs = 100
+	drainTimeoutMs     = 100
 	statusMarkerPrefix = "__gosh_status__:"
 )
 
@@ -122,6 +122,8 @@ func (p *Pipeline) Drain(ctx context.Context, opts ...Option) {
 
 // Err returns error
 func (p *Pipeline) Err() error {
+	p.mux.Lock()
+	defer p.mux.Unlock()
 	return p.err
 }
 
@@ -193,7 +195,11 @@ func (p *Pipeline) copy(reader io.Reader, dest chan string, notification *sync.W
 }
 
 func (p *Pipeline) closeIfError(writeError error) error {
-	p.err = writeError
+	p.mux.Lock()
+	if p.err == nil {
+		p.err = writeError
+	}
+	p.mux.Unlock()
 	return p.Close()
 }
 
@@ -292,6 +298,7 @@ outer:
 		case <-time.After(timeoutDuration):
 			waitTimeMs += tickFrequencyMs
 			if waitTimeMs >= timeoutMs {
+				err = fmt.Errorf("%w after %dms", ErrTimeout, timeoutMs)
 				break outer
 			}
 		}
@@ -304,6 +311,9 @@ outer:
 	if len(out) > 0 {
 		hasOutput = true
 		out = p.removePromptIfNeeded(out)
+	}
+	if statusCode == nil && err != nil {
+		return out, hasOutput, -1, err
 	}
 	if statusCode == nil {
 		statusCode = &defaultCode
@@ -428,7 +438,7 @@ func (p *Pipeline) removePromptIfNeeded(stdout string) string {
 }
 
 func (p *Pipeline) hasTerminator(input string, terminators ...string) bool {
-	if len(p.options.terminators) == 0 {
+	if len(terminators) == 0 {
 		return false
 	}
 	escapedInput := term.Clean(input)
