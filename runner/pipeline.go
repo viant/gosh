@@ -32,6 +32,7 @@ type (
 		bufferSize int
 		mux        sync.Mutex
 		running    int32
+		input      io.WriteCloser
 		stdout     io.Reader
 		stderr     io.Reader
 		output     chan string
@@ -40,6 +41,7 @@ type (
 		done       chan bool
 		marker     string
 		commandSeq uint64
+		copies     sync.WaitGroup
 	}
 )
 
@@ -137,6 +139,9 @@ func (p *Pipeline) Close() (err error) {
 	if !atomic.CompareAndSwapInt32(&p.running, 1, 0) {
 		return nil
 	}
+	if p.input != nil {
+		err = p.input.Close()
+	}
 	if closer, ok := p.stdout.(io.Closer); ok {
 		err = closer.Close()
 	}
@@ -145,16 +150,20 @@ func (p *Pipeline) Close() (err error) {
 			err = e
 		}
 	}
-	p.done <- true
-	p.Drain(context.Background())
-	time.Sleep(100 * time.Millisecond)
-	close(p.output)
-	close(p.error)
+	close(p.done)
+	// Writers select on done and readers may still consume buffered output.
+	// Close result channels only after both producers have exited.
+	go func() {
+		p.copies.Wait()
+		close(p.output)
+		close(p.error)
+	}()
 
 	return err
 }
 
 func (p *Pipeline) copy(reader io.Reader, dest chan string, notification *sync.WaitGroup) error {
+	defer p.copies.Done()
 	var written int64 = 0
 	buf := make([]byte, p.options.bufferSize)
 	var err error
@@ -246,12 +255,27 @@ func (p *Pipeline) Read(ctx context.Context, opts ...Option) (output string, has
 	}
 	var timeoutDuration = time.Duration(tickFrequencyMs) * time.Millisecond
 	out := ""
+	outputChannel, errorChannel := p.output, p.error
+	var deadline <-chan time.Time
+	var timer *time.Timer
+	if options.strictCompletion {
+		timer = time.NewTimer(time.Duration(timeoutMs) * time.Millisecond)
+		defer timer.Stop()
+		deadline = timer.C
+	}
 	var statusCode *int
 	var statusScanTail string
 outer:
 	for {
 		select {
-		case partialOutput := <-p.output:
+		case partialOutput, open := <-outputChannel:
+			if !open {
+				outputChannel = nil
+				if errorChannel == nil {
+					break outer
+				}
+				continue
+			}
 			waitTimeMs = 0
 			if code := p.extractStatusCode(partialOutput, &statusScanTail); code != nil {
 				statusCode = code
@@ -270,31 +294,45 @@ outer:
 				}
 				window.notify(p.removePromptIfNeeded(partialOutput))
 			}
-			if hasTerminator || len(partialOutput) == 0 {
+			if !options.strictCompletion && (hasTerminator || len(partialOutput) == 0) {
 				break outer
 			}
 			if code := p.extractStatusCode(out, &statusScanTail); code != nil {
 				statusCode = code
 			}
-			if (hasTerminator || statusCode != nil) && len(p.output) == 0 {
+			if ((hasTerminator && !options.strictCompletion) || statusCode != nil) && len(p.output) == 0 {
 				break outer
 			}
-		case e := <-p.error:
+		case e, open := <-errorChannel:
+			if !open {
+				errorChannel = nil
+				if outputChannel == nil {
+					break outer
+				}
+				continue
+			}
 			errOut += e
 			window.notify(p.removePromptIfNeeded(e))
 			if code := p.extractStatusCode(out, &statusScanTail); code != nil {
 				statusCode = code
 			}
-			if (hasTerminator || statusCode != nil) && len(p.error) == 0 {
+			if ((hasTerminator && !options.strictCompletion) || statusCode != nil) && len(p.error) == 0 {
 				break outer
 			}
 			hasTerminator = p.hasTerminator(errOut, options.terminators...)
-			if (hasPrompt || hasTerminator) && len(p.error) == 0 {
+			if !options.strictCompletion && (hasPrompt || hasTerminator) && len(p.error) == 0 {
 				break outer
 			}
 		case <-ctx.Done():
+			if options.strictCompletion {
+				err = fmt.Errorf("%w: %w", ErrIncompleteCommand, ctx.Err())
+				break outer
+			}
 			return "", false, 0, fmt.Errorf("context was cancelled or timed out")
 			// Context was cancelled or timed out
+		case <-deadline:
+			err = fmt.Errorf("%w after %dms", ErrTimeout, timeoutMs)
+			break outer
 		case <-time.After(timeoutDuration):
 			waitTimeMs += tickFrequencyMs
 			if waitTimeMs >= timeoutMs {
@@ -311,6 +349,9 @@ outer:
 	if len(out) > 0 {
 		hasOutput = true
 		out = p.removePromptIfNeeded(out)
+	}
+	if statusCode == nil && err == nil && options.strictCompletion {
+		err = ErrIncompleteCommand
 	}
 	if statusCode == nil && err != nil {
 		return out, hasOutput, -1, err
@@ -339,7 +380,7 @@ func (p *Pipeline) extractStatusCode(chunk string, tail *string) *int {
 			break
 		}
 	}
-	if end == start {
+	if end == start || end == len(buffer) {
 		*tail = buffer[markerPos:]
 		return nil
 	}
@@ -464,6 +505,7 @@ func (p *Pipeline) hasTerminator(input string, terminators ...string) bool {
 func (p *Pipeline) init(ctx context.Context, input io.WriteCloser) error {
 	started := sync.WaitGroup{}
 	started.Add(2)
+	p.copies.Add(2)
 	go p.copy(p.stdout, p.output, &started)
 	go p.copy(p.stderr, p.error, &started)
 	started.Wait()
@@ -500,6 +542,7 @@ func NewPipeline(ctx context.Context, in io.WriteCloser, stdout io.Reader, stder
 	ret := &Pipeline{
 		running: 1,
 		options: options,
+		input:   in,
 		stdout:  stdout,
 		stderr:  stderr,
 		output:  make(chan string, 1),
@@ -507,5 +550,18 @@ func NewPipeline(ctx context.Context, in io.WriteCloser, stdout io.Reader, stder
 		done:    make(chan bool, 1),
 	}
 
-	return ret, ret.init(ctx, in)
+	if err := ret.init(ctx, in); err != nil {
+		_ = ret.Close()
+		return nil, err
+	}
+	if options.SessionContext != nil {
+		go func() {
+			select {
+			case <-options.SessionContext.Done():
+				_ = ret.Close()
+			case <-ret.done:
+			}
+		}()
+	}
+	return ret, nil
 }

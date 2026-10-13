@@ -104,3 +104,14 @@ func TestPipelineReadConfiguredTerminatorRemainsSuccessful(t *testing.T) {
 	assert.Equal(t, 0, code)
 	assert.Contains(t, out, "ready>")
 }
+
+func TestPipelineStatusCodeWaitsForCompleteDigits(t *testing.T) {
+	p := &Pipeline{options: NewOptions(nil)}
+	marker := "__gosh_status__:split_code:"
+	p.setStatusMarker(marker)
+	tail := ""
+	require.Nil(t, p.extractStatusCode(marker+"12", &tail))
+	value := p.extractStatusCode("7\n", &tail)
+	require.NotNil(t, value)
+	require.Equal(t, 127, *value)
+}

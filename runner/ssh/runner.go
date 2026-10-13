@@ -134,6 +134,13 @@ func (r *Runner) init(ctx context.Context) (err error) {
 
 // Run runs supplied command
 func (r *Runner) Run(ctx context.Context, command string, options ...runner.Option) (string, int, error) {
+	settings := r.options.Apply(options)
+	if settings.StrictCompletion() && settings.AsPipeline() {
+		return "", -1, fmt.Errorf("strict completion is incompatible with pipeline mode")
+	}
+	if settings.SessionContext != nil && settings.SessionContext.Err() != nil {
+		return "", -1, settings.SessionContext.Err()
+	}
 	// Serialize command execution on a shared interactive shell session.
 	r.runMu.Lock()
 	defer r.runMu.Unlock()
@@ -142,6 +149,9 @@ func (r *Runner) Run(ctx context.Context, command string, options ...runner.Opti
 		return "", 0, err
 	}
 	if !r.pipeline.Running() {
+		if settings.StrictCompletion() {
+			return "", -1, fmt.Errorf("%w: shell is closed", runner.ErrIncompleteCommand)
+		}
 		return "", 0, r.pipeline.Err()
 	}
 	r.pipeline.Drain(ctx)
@@ -156,6 +166,9 @@ func (r *Runner) Run(ctx context.Context, command string, options ...runner.Opti
 		return "", 0, err
 	}
 	output, _, code, err := r.pipeline.Read(ctx, options...)
+	if err != nil && settings.StrictCompletion() {
+		_ = r.Close()
+	}
 	if r.options.History != nil {
 		r.options.History.Commands = append(r.options.History.Commands, runner.NewCommand(command, output, err))
 	}

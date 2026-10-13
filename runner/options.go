@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"github.com/viant/gosh/term"
 )
 
@@ -15,7 +16,10 @@ var defaultShell = "/bin/sh"
 type (
 	//Options represents runner options
 	Options struct {
-		Runner             Runner
+		Runner Runner
+		// SessionContext optionally owns the shell transport lifetime. Nil keeps legacy behavior.
+		SessionContext     context.Context `json:"-" yaml:"-"`
+		strictCompletion   bool
 		Shell              string
 		Term               string
 		Cols               int
@@ -177,3 +181,19 @@ func AsPipeline() Option {
 		o.pipeline = true
 	}
 }
+
+// WithSessionContext explicitly binds the transport lifetime to ctx. Command
+// contexts continue to bound individual Run calls. Nil preserves the default.
+// Pass this option when constructing the runner, before its first command.
+func WithSessionContext(ctx context.Context) Option {
+	return func(o *Options) { o.SessionContext = ctx }
+}
+
+// WithStrictCompletion requires a command status marker, reports closed shells
+// as errors, preserves partial output on cancellation, and applies an absolute
+// command timeout. It is opt-in; interactive prompt/terminator behavior stays
+// unchanged for existing callers. It cannot be combined with AsPipeline.
+func WithStrictCompletion(enabled bool) Option {
+	return func(o *Options) { o.strictCompletion = enabled }
+}
+func (o *Options) StrictCompletion() bool { return o.strictCompletion }

@@ -47,10 +47,20 @@ func (r *Runner) Run(ctx context.Context, command string, options ...runner.Opti
 	r.runMu.Lock()
 	defer r.runMu.Unlock()
 
+	settings := r.options.Apply(options)
+	if settings.StrictCompletion() && settings.AsPipeline() {
+		return "", -1, fmt.Errorf("strict completion is incompatible with pipeline mode")
+	}
+	if settings.SessionContext != nil && settings.SessionContext.Err() != nil {
+		return "", -1, settings.SessionContext.Err()
+	}
 	if err := r.initIfNeeded(ctx); err != nil {
 		return "", 0, err
 	}
 	if !r.pipeline.Running() {
+		if settings.StrictCompletion() {
+			return "", -1, fmt.Errorf("%w: shell is closed", runner.ErrIncompleteCommand)
+		}
 		return "", 0, r.pipeline.Err()
 	}
 	r.pipeline.Drain(ctx)
@@ -65,6 +75,9 @@ func (r *Runner) Run(ctx context.Context, command string, options ...runner.Opti
 		return "", 0, err
 	}
 	output, _, code, err := r.pipeline.Read(ctx, options...)
+	if err != nil && settings.StrictCompletion() {
+		_ = r.Close()
+	}
 	if r.options.History != nil {
 		r.options.History.Commands = append(r.options.History.Commands, runner.NewCommand(command, output, err))
 	}
@@ -104,6 +117,8 @@ func (r *Runner) initIfNeeded(ctx context.Context) error {
 		return nil
 	}
 	if err := r.init(ctx); err != nil {
+		_ = r.Close()
+		atomic.StoreUint32(&r.inited, 0)
 		return err
 	}
 	return nil
@@ -144,7 +159,7 @@ func (r *Runner) init(ctx context.Context) error {
 
 // Close closes runner
 func (r *Runner) Close() error {
-	if r.cmd.Process != nil {
+	if r.cmd != nil && r.cmd.Process != nil {
 		r.cmd.Process.Kill()
 	}
 	if r.pipeline != nil {

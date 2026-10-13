@@ -139,6 +139,38 @@ When `Runner.Run` executes a command, `gosh` appends an internal completion toke
 - The completion token is stripped from returned command output.
 
 
+### Opt-in automation safeguards
+
+Existing callers keep the default interactive prompt and timeout behavior. For
+bounded automation, construct a runner with explicit lifetime and completion
+options:
+
+```go
+lifetime, stop := context.WithCancel(context.Background())
+defer stop()
+r := local.New(
+    runner.WithSessionContext(lifetime),
+    runner.WithStrictCompletion(true),
+)
+defer r.Close()
+
+out, code, err := r.Run(commandContext, "printf hello", runner.WithTimeout(5000))
+```
+
+`WithSessionContext` binds the transport lifetime independently of each command.
+Canceling a context after its command has completed does not close that session.
+Canceling the lifetime closes its I/O. Omit the option, or pass nil, to retain the
+existing lifetime behavior.
+
+`WithStrictCompletion(true)` requires the command's complete status marker,
+uses an absolute timeout even while output continues, and returns partial output
+with an error and exit code -1 if completion is unconfirmed. A failed strict run
+closes its runner; create a new runner explicitly after inspecting the failure.
+Commands are never replayed. Quiet successful commands still return code 0.
+Strict mode cannot be combined with raw `AsPipeline` mode. Existing prompt and
+terminator behavior is unchanged when strict completion is disabled.
+
+
 ## License
 
 The source code is made available under the terms of the Apache License, Version 2, as stated in the file `LICENSE`.
