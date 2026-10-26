@@ -50,12 +50,12 @@ func (s *Service) detectSystem(ctx context.Context) (err error) {
 	s.osInfo = &OSInfo{}
 	s.hwInfo = &HardwareInfo{Architecture: "unknown"}
 	var e error
-	if s.osInfo.System, _, e = s.runner.Run(ctx, "uname -s"); err != nil {
-		err = e
+	if s.osInfo.System, _, e = s.runner.Run(ctx, "uname -s"); e != nil {
+		return e
 	}
 	s.osInfo.System = strings.TrimSpace(strings.TrimSpace(strings.ToLower(s.osInfo.System)))
-	if s.hwInfo.Hardware, _, e = s.runner.Run(ctx, "uname -m"); err != nil {
-		err = e
+	if s.hwInfo.Hardware, _, e = s.runner.Run(ctx, "uname -m"); e != nil {
+		return e
 	}
 	s.hwInfo.Hardware = strings.TrimSpace(strings.ToLower(s.hwInfo.Hardware))
 	checkCmd := "lsb_release -a"
